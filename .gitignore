@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Editor directories and files
+.vscode/
+.idea/
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Vault and secrets
+vault.json
+vault.json.sha256
+salt.bin
+
+# Logs
+*.log
+
+# Byte-compiled / build
+build/
+dist/
+*.egg-info/
+
+# Environments
+.env
+.env.local
+
+# Database
+*.sqlite3
+
+# Other
+coverage/
+htmlcov/
+
+# Ignore secrets accidentally added
+secrets.json
