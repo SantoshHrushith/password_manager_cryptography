@@ -1,48 +1,57 @@
-# Final Report — Secure Password Vault (Local AES Manager)
+Project Report — Secure Password Vault (local)
 
-Project summary
+Date: 2025-10-28
 
-This project implements a local password vault in Python. It derives an AES-256 key from a master password using PBKDF2-HMAC-SHA256 with a random salt and 200,000 iterations. Credentials (username/password) are encrypted using AES-GCM which provides confidentiality and authentication. All encrypted entries are stored in `vault.json`. A SHA-256 hash of `vault.json` is stored in `vault.json.sha256` to detect external tampering.
+This report summarizes the current implementation, recent changes, design choices, and suggested next steps for the local password vault project implemented in `vault.py`.
 
-Design choices
+## High-level summary
+- Purpose: a small, local-only password manager that encrypts credentials with AES-GCM and derives the encryption key from a user-provided master password using PBKDF2-HMAC-SHA256.
+- Storage: encrypted credentials are stored in `vault.json`. An integrity file `vault.json.sha256` stores a SHA-256 digest to detect accidental or malicious changes. The PBKDF2 salt is persisted in `salt.bin`.
 
-- PBKDF2 with 200k iterations: balances CPU work for attackers and usability. Salt (16 bytes) prevents precomputed attacks.
-- AES-GCM: provides both confidentiality and integrity (authentication tag). We use a 12-byte random IV per-encryption.
-- Vault integrity: SHA-256 over the entire `vault.json` file, stored in `vault.json.sha256`. The application verifies the hash before loading the vault and after saving it.
-- No external key managers: key material is derived from user-supplied master password only. Salt and vault files are stored locally.
+## What changed (recent updates)
+- Unified terminal UI: implemented `render_screen()` + `clear_screen()` and replaced ad-hoc prints with consistent screens for Menu, Add, Search, Site view, Reveal, and Change-master screens. This gives a consistent title / commands / details / instructions layout.
+- Add screen improvements: Add uses `render_screen()` and now supports cancellation (type `b` or leave the field blank to cancel). The details area is suppressed when not relevant.
+- Edit & Delete actions: after revealing a credential (requires re-entering master password), the user can edit or delete the entry. Edits re-encrypt using the provided confirm key. Deletions remove the entry and the site key if it becomes empty.
+- Atomic vault writes: `save_vault()` writes to a temporary file then `os.replace()` to avoid partial writes. The SHA-256 digest file is updated after successful saves.
+- .gitignore: added to prevent committing `vault.json`, `salt.bin`, `.venv`, etc.
 
-Files
+## Crypto & data model (concise)
+- KDF: PBKDF2-HMAC-SHA256 with ITERATIONS = 200000 (set in `vault.py`). Salt is 16 bytes stored in `salt.bin`.
+- Symmetric cipher: AES-256 in GCM mode (AES-GCM) — provides confidentiality and authentication via the GCM tag. Each encrypted blob stores base64-encoded iv (12 bytes), ciphertext, and tag.
+- Vault JSON shape: top-level object mapping site -> list of entries. Each entry is {"username": <encrypted blob>, "password": <encrypted blob>}. Legacy single-entry objects are normalized on load.
+- Integrity: `vault.json.sha256` stores the SHA-256 hex digest of the vault file. `load_vault()` verifies the digest unless disabled.
 
-- `vault.py`: main program — supports `init`, `add`, `view`, `list`, `verify`.
-- `vault.json`: created at runtime to hold encrypted credentials.
-- `vault.json.sha256`: stores SHA-256 hex digest of `vault.json` for integrity checks.
-- `salt.bin`: random salt used with PBKDF2.
+## CLI states and flows
+The interactive UI implements a clear state machine. Key states:
+- Main Menu — unified screen listing sites and top-level commands (+, ?, #, q) and instructions.
+- Add — form screen (no details area) for Website/Username/Password; supports cancel.
+- Search — shows matching sites and lets you select or cancel.
+- Site view — lists usernames for a site; select a username to reveal.
+- Reveal — re-enter master password to reveal the credential, then choose `edit`, `delete` or `back`.
+- Change master — verifies current master, asks for new password twice, re-encrypts the vault with a new salt.
 
-How integrity verification works
+## Usage (quick)
+1. Set up a virtualenv and install the dependency in `requirements.txt` (cryptography).
+2. Run `python vault.py cli` for interactive mode. Other commands are available as described in README.
 
-1. After saving `vault.json`, the program computes sha256(vault.json) and writes the hex digest to `vault.json.sha256`.
-2. On load, the program recomputes sha256(vault.json) and compares to the stored digest. If they differ, the program refuses to load the vault and warns the user.
+## Testing and verification performed
+- Manual smoke-tested interactive flows: Menu → Add → Site → Reveal → Edit/Delete.
+- Verified `py_compile` on `vault.py` (syntax OK in current workspace).
 
-Viva questions (short answers)
+## Known limitations & risk
+- If the master password is lost, the vault is irrecoverable.
+- `ITERATIONS` is set to 200k — reasonable for now but can be increased (slow unlock tradeoff).
+- The current UI prints to the terminal; clipboard integration and secure ephemeral display are not implemented.
+- No automated unit tests yet for crypto functions or file IO.
 
-- Why PBKDF2? — To derive a cryptographic key from a potentially weak password while slowing brute-force attempts via iterations and using a salt to avoid rainbow tables.
-- Why AES-GCM? — GCM provides authenticated encryption: both confidentiality and integrity (via the authentication tag) in a single primitive.
-- What if the vault file is tampered with? — The SHA-256 digest check will detect tampering. Additionally, AES-GCM will fail decryption with an authentication tag mismatch if ciphertext or metadata changed.
-- Can an attacker recover the vault if the master password is lost? — No. The key is derived from the master password and is not stored; without it the ciphertext cannot be decrypted.
+## Next recommended steps
+1. Add unit tests for encrypt/decrypt, KDF, and save/load (quick pytest suite).
+2. Add an automated demo script to exercise major interactive states (could use pexpect or a headless mode).
+3. Consider adding an optional encrypted backup export/import command.
+4. Add a "quiet" or "no-clear" flag for environments that need scrollback instead of clearing the screen.
+5. Optionally support copying a revealed password to the OS clipboard using a platform-safe library and clearing it after a timeout.
 
-How to run tests (manual quick test)
+If you want, I can implement items 1 or 2 next. Tell me which one to start with and I will add the files and run tests locally.
 
-1. Add an entry
-   - `python vault.py add` — provide site, username, password and master password
-2. List entries
-   - `python vault.py list`
-3. View entry
-   - `python vault.py view` — provide same master password
-4. Verify integrity
-   - `python vault.py verify`
-
-Security notes & next steps
-
-- Consider using a KDF with memory-hard properties (Argon2) for stronger resistance to GPU/ASIC attacks.
-- Consider encrypting salt and hash files if storing them on untrusted media, or using file system protections.
-- Add secure clipboard wiping when copying passwords to clipboard.
+---
+Report generated from the current workspace state on 2025-10-28.
